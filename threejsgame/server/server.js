@@ -31,12 +31,18 @@ io.on('connection', (socket) => {
     socket.on('playerMove', (data) => {
 
       console.log('Игрок изменил координаты:', data);
+
+      players.forEach(player => {
+        if (player.name === data.name) {
+            player.position = data.position;
+        }
+      });
       
       socket.broadcast.emit('playerMove', data);
     });
     
     socket.on('disconnect', () => {
-
+    
       console.log('Пользователь отключился:', socket.id);
       
     });
