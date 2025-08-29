@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 
 let players = [];
 
-let world = GenerateWorld(100, 100, 1, 200, 4);
+let world = GenerateWorld(50, 50, 1, 100, 9);
 
 
 // Создаем HTTP сервер 

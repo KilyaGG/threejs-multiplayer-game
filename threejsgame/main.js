@@ -195,44 +195,65 @@ socket.on('connect', () => {
 
 
 
-    function initialisePlayerControls(moveValue) {
+    function initialisePlayerControls(moveValue, camera) {
         document.addEventListener('keydown', function(event) {
             const key = event.code;
-            let posX;
-            let posZ;
+            let moveDirection = new THREE.Vector3();
             let requiredKeyPressed = false;
+            
+            // Получаем направление камеры
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
+            cameraDirection.y = 0; // Игнорируем вертикальную составляющую
+            cameraDirection.normalize();
+            
+            // Перпендикулярное направление для движения влево/вправо
+            const cameraRight = new THREE.Vector3();
+            cameraRight.crossVectors(camera.up, cameraDirection).normalize();
+            
             if (key === "KeyA") {
-                posX = player.position.x - moveValue;
-                posZ = player.position.z;
+                // Движение влево относительно камеры на 1 единицу
+                moveDirection.copy(cameraRight).multiplyScalar(1);
                 requiredKeyPressed = true;
             }
             if (key === "KeyD") {
-                posX = player.position.x + moveValue;
-                posZ = player.position.z;
+                // Движение вправо относительно камеры на 1 единицу
+                moveDirection.copy(cameraRight).multiplyScalar(-1);
                 requiredKeyPressed = true;
             }
             if (key === "KeyW") {
-                posX = player.position.x;
-                posZ = player.position.z - moveValue;
+                // Движение вперед относительно камеры на 1 единицу
+                moveDirection.copy(cameraDirection).multiplyScalar(1);
                 requiredKeyPressed = true;
             }
             if (key === "KeyS") {
-                posX = player.position.x;
-                posZ = player.position.z + moveValue;
+                // Движение назад относительно камеры на 1 единицу
+                moveDirection.copy(cameraDirection).multiplyScalar(-1);
                 requiredKeyPressed = true;
             }
 
-            if (SomethingLikeCollision(posX, posZ) && requiredKeyPressed) {
-                player.position.x = posX;
-                player.position.z = posZ;
+            if (key === "KeyP") {
+                const pos = player.position;
+                controls.target.set(pos.x, pos.y, pos.z);
+                camera.position.set(pos.x + 3, pos.y + 3, pos.z + 3);
+                controls.update();
+            }
+            const oldPosition = player.position.clone();
+            player.position.add(moveDirection);
+            if (SomethingLikeCollision(Math.round(player.position.x), Math.round(player.position.z)) && requiredKeyPressed) {
+                
+                player.position.x = Math.round(player.position.x);
+                player.position.z = Math.round(player.position.z);
                 requiredKeyPressed = false;
                 
                 const movedata = {
                     id: mySocketID,
                     position: player.position
                 }
-
+                
                 socket.emit('playerMove', movedata);
+            } else {
+                player.position.set(oldPosition.x, oldPosition.y, oldPosition.z);
             }
 
         });
@@ -251,7 +272,7 @@ socket.on('connect', () => {
 
     function initialiseGame() {
         initialisePlayer(1);
-        initialisePlayerControls(playerSpeed);
+        initialisePlayerControls(playerSpeed, camera);
     }
 
     initialiseGame();
