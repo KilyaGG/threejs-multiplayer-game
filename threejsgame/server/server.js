@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 
 let players = [];
 
-let world = GenerateWorld(50, 50, 1, 100, 4);
+let world = GenerateWorld(100, 100, 1, 200, 4);
 
 
 // Создаем HTTP сервер 
@@ -13,6 +13,7 @@ const io = new Server(3000, {
     methods: ["GET", "POST"]
   }
 });
+
 
 console.log('Сервер запущен, ожидаю игроков...');
 
@@ -33,7 +34,7 @@ io.on('connection', (socket) => {
       console.log('Игрок изменил координаты:', data);
 
       players.forEach(player => {
-        if (player.name === data.name) {
+        if (player.id === data.id) {
             player.position = data.position;
         }
       });
@@ -42,7 +43,12 @@ io.on('connection', (socket) => {
     });
     
     socket.on('disconnect', () => {
-    
+      socket.broadcast.emit('player-disconnect', socket.id);
+      players.forEach((player, index) => {
+        if (player.id === socket.id) {
+            players.splice(index, 1);
+        }
+      });
       console.log('Пользователь отключился:', socket.id);
       
     });

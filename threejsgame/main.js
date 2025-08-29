@@ -14,22 +14,31 @@ socket.on('connect', () => {
 
     // Слушаем сообщения от сервера
     socket.on('playerMove', (data) => {
-        UpdatePlayer(data.name, data.position)
+        UpdatePlayer(data.id, data.position)
     });
 
     socket.on('playerConnect', (data) => {
-        console.log(`Опа а кто это тут у нас? Да это же ${data.name}!`);
-        addNewPlayer(data.name, data.position);
+        console.log(`Опа а кто это тут у нас? Да это же ${data.id}!`);
+        addNewPlayer(data.id, data.position);
     });
 
     socket.on('worldData-new-user', (worldData) => {
         console.log(`Получил данные о мире, длинной ${worldData.length}! Начинаю обработку...`)
         printWorld(worldData);
+        initialiseEarth(worldData.length);
     });
 
     socket.on('players-new-user', (players) => {
         players.forEach(player => {
-            addNewPlayer(player.name, player.position);
+            addNewPlayer(player.id, player.position);
+        });
+    });
+
+    socket.on('player-disconnect', (id) => {
+        players.forEach(function(player, index) {
+            if (player.id === id) {
+                RemovePlayer(player, index);
+            }
         });
     });
 
@@ -39,8 +48,8 @@ socket.on('connect', () => {
     window.players = [];
 
     class Player {
-        constructor(name, object) {
-            this.name = name;
+        constructor(id, object) {
+            this.id = id;
             this.object = object;
         }
     }
@@ -62,7 +71,7 @@ socket.on('connect', () => {
         scene.add(player);
         player.position.y += 1;
         const playerInstance = {
-            name: mySocketID,
+            id: mySocketID,
             position: player.position
         };
         const textSprite = createTextSprite('You', {
@@ -78,7 +87,7 @@ socket.on('connect', () => {
         const newPlayer = createACoolCubeWithEdges(0x000000, 1);
         scene.add(newPlayer);
         const playerClassInstance = new Player();
-        playerClassInstance.name = id;
+        playerClassInstance.id = id;
         playerClassInstance.object = newPlayer;
 
         const textSprite = createTextSprite(id, {
@@ -91,6 +100,12 @@ socket.on('connect', () => {
         newPlayer.position.x = playerCoords.x;
         newPlayer.position.y = playerCoords.y;
         newPlayer.position.z = playerCoords.z;
+    }
+
+    function RemovePlayer(player, index) {
+        scene.remove(player.object);
+        players.splice(index, 1);
+        console.log(`Игрок отключился или был удален: ${player.id}`);
     }
 
     function createACoolCubeWithEdges(color, size) {
@@ -108,8 +123,8 @@ socket.on('connect', () => {
         return cube;
     }
 
-    function initialiseEarth() {
-        const geometry = new THREE.BoxGeometry(100, 1, 100);
+    function initialiseEarth(size) {
+        const geometry = new THREE.BoxGeometry(size, 1, size);
         const material = new THREE.MeshBasicMaterial( { color: 0x50C878 } );
         const earth = new THREE.Mesh( geometry, material );
         scene.add( earth );
@@ -213,7 +228,7 @@ socket.on('connect', () => {
                 requiredKeyPressed = false;
                 
                 const movedata = {
-                    name: mySocketID,
+                    id: mySocketID,
                     position: player.position
                 }
 
@@ -223,9 +238,9 @@ socket.on('connect', () => {
         });
     }
 
-    function UpdatePlayer(name, position) {
+    function UpdatePlayer(id, position) {
         players.forEach(player => {
-            if (player.name === name) {
+            if (player.id === id) {
                 let playerPos = player.object.position;
                 playerPos.x = position.x;
                 playerPos.y = position.y;
@@ -235,7 +250,6 @@ socket.on('connect', () => {
     }
 
     function initialiseGame() {
-        initialiseEarth();
         initialisePlayer(1);
         initialisePlayerControls(playerSpeed);
     }
