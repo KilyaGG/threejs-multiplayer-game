@@ -56,7 +56,7 @@ socket.on('connect', () => {
 
     const loader = new GLTFLoader();
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+    window.camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
 
     const renderer = new THREE.WebGLRenderer();
     renderer.setSize( window.innerWidth, window.innerHeight );
@@ -245,6 +245,11 @@ socket.on('connect', () => {
                 player.position.x = Math.round(player.position.x);
                 player.position.z = Math.round(player.position.z);
                 requiredKeyPressed = false;
+
+                const pos = player.position;
+                controls.target.set(pos.x, pos.y, pos.z);
+                camera.position.add(moveDirection);
+                controls.update();
                 
                 const movedata = {
                     id: mySocketID,
