@@ -7,6 +7,7 @@ import { io } from 'socket.io-client';
 
 const socket = io('http://localhost:3000');
 let mySocketID;
+let loadedChunks = [];
 
 socket.on('connect', () => { 
     mySocketID = socket.id; 
@@ -23,9 +24,8 @@ socket.on('connect', () => {
     });
 
     socket.on('worldData-new-user', (worldData) => {
-        console.log(`Получил данные о мире, длинной ${worldData.length}! Начинаю обработку...`)
+        console.log(`Получил данные о мире, длинной ${worldData.length} чанков! Начинаю обработку...`)
         printWorld(worldData);
-        initialiseEarth(worldData.length);
     });
 
     socket.on('players-new-user', (players) => {
@@ -56,7 +56,7 @@ socket.on('connect', () => {
 
     const loader = new GLTFLoader();
     const scene = new THREE.Scene();
-    window.camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+    const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
 
     const renderer = new THREE.WebGLRenderer();
     renderer.setSize( window.innerWidth, window.innerHeight );
@@ -123,32 +123,55 @@ socket.on('connect', () => {
         return cube;
     }
 
-    function initialiseEarth(size) {
+    function initialiseEarth(size, position) {
         const geometry = new THREE.BoxGeometry(size, 1, size);
         const material = new THREE.MeshBasicMaterial( { color: 0x50C878 } );
         const earth = new THREE.Mesh( geometry, material );
         scene.add( earth );
+        earth.position.x = position.x;
+        earth.position.z = position.z;
     }
+
 
     function printWorld(worldData) {
         window.tookPlaces = [];
-        worldData.forEach(structure => {
-            const coords = {
-                x: structure.x,
-                z: structure.z
-            };
-            tookPlaces.push(coords);
-            const structureColor = structure.color;
-            const size = structure.size;
-            const height = structure.height;
-            for (let i = 1; i <= height; i++) {
-                const structure = createACoolCubeWithEdges(structureColor, size);
-                scene.add(structure);
-                structure.position.x = coords.x;
-                structure.position.y += i;
-                structure.position.z = coords.z;
-            }
-        });
+        let chunksToWork = [];
+        if (loadedChunks.length != 0) {
+            worldData.forEach(object => {
+                let chunkNotLoadedYet = true;
+                loadedChunks.forEach(chunk => {
+                    if (chunk.middle.x === object.middle.x && chunk.middle.z === object.middle.z) {
+                        chunkNotLoadedYet = false;
+                    }
+                });
+                if (chunkNotLoadedYet) {
+                    chunksToWork.push(object);
+                }
+            });
+        } else {
+            chunksToWork = worldData;
+        }
+        chunksToWork.forEach((chunk) => {
+            loadedChunks.push(chunk);
+            initialiseEarth(chunk.length, chunk.middle);
+            chunk.chunkBlockdata.forEach(structure => {
+                const coords = {
+                    x: structure.x,
+                    z: structure.z
+                };
+                tookPlaces.push(coords);
+                const structureColor = structure.color;
+                const size = structure.size;
+                const height = structure.height;
+                for (let i = 1; i <= height; i++) {
+                    const structure = createACoolCubeWithEdges(structureColor, size);
+                    scene.add(structure);
+                    structure.position.x = coords.x;
+                    structure.position.y += i;
+                    structure.position.z = coords.z;
+                }
+            });
+        });        
     }
 
     function createTextSprite(text, options = {}) {
@@ -190,9 +213,6 @@ socket.on('connect', () => {
 
         return isPlaceFree;
     }
-
-
-
 
 
     function initialisePlayerControls(moveValue, camera) {
@@ -245,7 +265,7 @@ socket.on('connect', () => {
                 player.position.x = Math.round(player.position.x);
                 player.position.z = Math.round(player.position.z);
                 requiredKeyPressed = false;
-
+                
                 const pos = player.position;
                 controls.target.set(pos.x, pos.y, pos.z);
                 camera.position.add(moveDirection);
