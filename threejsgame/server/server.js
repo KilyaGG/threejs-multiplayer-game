@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 
 let players = [];
 
-const worldSize = 10;
+const worldSize = 100;
 const worldSeed = 214331;
 const chunkLength = 10;
 
@@ -53,14 +53,14 @@ io.on('connection', (socket) => {
 
     socket.on('playerConnect', (data) => {
         players.push(data);
-        socket.emit('worldData-new-user', GetChunksToSendImproved(data.position));
+        socket.emit('worldData-new-user', GetChunksToSendImproved(data));
         console.log(`Игроков на сервере: ${players.length}`);
         socket.broadcast.emit('playerConnect', data);
     })
 
     socket.on('playerMove', (data) => {
-      socket.emit('worldData-new-user', GetChunksToSendImproved(data.position));
-      console.log('Игрок изменил координаты:', data);
+      socket.emit('worldData-new-user', GetChunksToSendImproved(data));
+      console.log('Игрок изменил координаты:', data.position);
 
       players.forEach(player => {
         if (player.id === data.id) {
@@ -83,27 +83,37 @@ io.on('connection', (socket) => {
     });
 });
 
-function GetChunksToSendImproved(position) {
+function GetChunksToSendImproved(data) {
+    let currentPlayer;
+    players.forEach(player => {
+        if (player.id === data.id) {
+            currentPlayer = data;
+        }
+    });
+
+    const position = data.position;
+    const distance = data.renderDistance;
 
     let chunksToSend = [];
 
     let x = position.x;
     let z = position.z;
+    
+    const worldSizeToChunks = worldSize/chunkLength;
 
     const worldCenter = worldSize*worldSize/2;
 
-    let j = Math.floor((x + worldCenter)/chunkLength);
-    let i = Math.floor((z + worldCenter)/chunkLength);
+    let j = Math.floor((x + worldCenter/worldSizeToChunks)/chunkLength);
+    let i = Math.floor((z + worldCenter/worldSizeToChunks)/chunkLength);
+    
     try {
-        chunksToSend.push(world[i][j]);
-        chunksToSend.push(world[i+1][j]);
-        chunksToSend.push(world[i-1][j]);
-        chunksToSend.push(world[i][j+1]);
-        chunksToSend.push(world[i][j-1]);
-        chunksToSend.push(world[i+1][j+1]);
-        chunksToSend.push(world[i-1][j-1]);
-        chunksToSend.push(world[i+1][j-1]);
-        chunksToSend.push(world[i-1][j+1]);
+        for (let di = -distance; di <= distance; di++) {
+            for (let dj = -distance; dj <= distance; dj++) {
+                if (world[i + di] && world[i + di][j + dj]) {
+                    chunksToSend.push(world[i + di][j + dj]);
+                }
+            }
+        }
     } catch {}
     return chunksToSend;
 }
@@ -111,7 +121,6 @@ function GetChunksToSendImproved(position) {
 function GenerateWorldChunks(worldSize, maxStructuresOnChunk, maxStructuresHeight, chunkLength, seed = 12345) {
     let world = [];
 
-    // Детерминированный генератор псевдослучайных чисел
     function seededRandom() {
         seed = (seed * 9301 + 49297) % 233280;
         return seed / 233280;
@@ -132,14 +141,15 @@ function GenerateWorldChunks(worldSize, maxStructuresOnChunk, maxStructuresHeigh
     }
 
     const worldCenter = worldSize * worldSize / 2;
+    const worldSizeToChunks = worldSize/chunkLength;
 
     for (let i = 0; i < worldSize; i++) {
         world[i] = [];
         for (let j = 0; j < worldSize; j++) {
             let chunk = new Chunk();
             chunk.length = chunkLength;
-            let x = j * chunkLength - worldCenter;
-            let z = i * chunkLength - worldCenter;
+            let x = j * chunkLength - worldCenter / worldSizeToChunks;
+            let z = i * chunkLength - worldCenter / worldSizeToChunks;
             chunk.middle = { x: x, z: z };
             
             for (let a = 0; a < maxStructuresOnChunk; a++) {

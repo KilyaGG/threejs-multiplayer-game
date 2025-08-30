@@ -46,11 +46,12 @@ socket.on('connect', () => {
     //CONFIG
 
     window.players = [];
-
+    window.noclip = false;
     class Player {
-        constructor(id, object) {
+        constructor(id, object, renderDistance) {
             this.id = id;
             this.object = object;
+            this.renderDistance = renderDistance
         }
     }
 
@@ -65,18 +66,24 @@ socket.on('connect', () => {
     const controls = new OrbitControls( camera, renderer.domElement );
     controls.target.set( 0, 0, 0 );
 
-    function initialisePlayer(speed) {
+
+    //LOGIC
+
+
+    function initialisePlayer(speed, renderDistance) {
         window.player = createACoolCubeWithEdges(0x000000, 1);
         window.playerSpeed = speed;
+        window.renderDistance = renderDistance;
         scene.add(player);
         player.position.y += 1;
 
         const playerInstance = {
             id: mySocketID,
-            position: player.position
+            position: player.position,
+            renderDistance: renderDistance
         };
         const textSprite = createTextSprite('You', {
-            color: '#ff0000ff'
+            color: '#ffffffff'
         });
         player.add(textSprite);
         textSprite.position.y += 1;
@@ -92,7 +99,7 @@ socket.on('connect', () => {
         playerClassInstance.object = newPlayer;
 
         const textSprite = createTextSprite(id, {
-            color: '#ff0000ff'
+            color: '#ffffffff'
         });
         newPlayer.add(textSprite);
         textSprite.position.y += 1;
@@ -131,6 +138,7 @@ socket.on('connect', () => {
         scene.add( earth );
         earth.position.x = position.x;
         earth.position.z = position.z;
+        return earth;
     }
 
 
@@ -141,7 +149,7 @@ socket.on('connect', () => {
                 if (object) {
                     let chunkNotLoadedYet = true;
                     loadedChunks.forEach(chunk => {
-                        if (chunk.middle.x === object.middle.x && chunk.middle.z === object.middle.z) {
+                        if (chunk.chunkData.middle.x === object.middle.x && chunk.chunkData.middle.z === object.middle.z) {
                             chunkNotLoadedYet = false;
                         }
                     });
@@ -154,8 +162,9 @@ socket.on('connect', () => {
             chunksToWork = worldData;
         }
         chunksToWork.forEach((chunk) => {
-            loadedChunks.push(chunk);
-            initialiseEarth(chunk.length, chunk.middle);
+            const chunkObjects = [];
+            const chunkEarth = initialiseEarth(chunk.length, chunk.middle);
+            chunkObjects.push(chunkEarth);
             chunk.chunkBlockdata.forEach(structure => {
                 const coords = {
                     x: structure.x,
@@ -167,12 +176,16 @@ socket.on('connect', () => {
                 const height = structure.height;
                 for (let i = 1; i <= height; i++) {
                     const structure = createACoolCubeWithEdges(structureColor, size);
-                    scene.add(structure);
+                    chunkObjects.push(structure);
                     structure.position.x = coords.x;
                     structure.position.y += i;
                     structure.position.z = coords.z;
                 }
             });
+            chunkObjects.forEach(object => {
+                scene.add(object);
+            });
+            loadedChunks.push({chunkData: chunk, objects: chunkObjects});
         });        
     }
 
@@ -201,23 +214,27 @@ socket.on('connect', () => {
     }
 
     function SomethingLikeCollision(x, z) {
-        let isPlaceFree = true;
-        const coordsToCheck = {
-            x: x,
-            z: z
-        };
-        tookPlaces.forEach(place => {
-            if (place.x === coordsToCheck.x && place.z === coordsToCheck.z) {
-                isPlaceFree = false;
-                console.log(`тут занято ${x}, ${z}`);
-            }
-        });
+        if (!noclip) {
+            let isPlaceFree = true;
+            const coordsToCheck = {
+                x: x,
+                z: z
+            };
+            tookPlaces.forEach(place => {
+                if (place.x === coordsToCheck.x && place.z === coordsToCheck.z) {
+                    isPlaceFree = false;
+                    console.log(`тут занято ${x}, ${z}`);
+                }
+            });
 
-        return isPlaceFree;
+            return isPlaceFree;
+        } else {
+            return true;
+        }
     }
 
 
-    function initialisePlayerControls(moveValue, camera) {
+    function initialisePlayerControls(camera) {
         document.addEventListener('keydown', function(event) {
             const key = event.code;
             let moveDirection = new THREE.Vector3();
@@ -235,22 +252,22 @@ socket.on('connect', () => {
             
             if (key === "KeyA") {
                 // Движение влево относительно камеры на 1 единицу
-                moveDirection.copy(cameraRight).multiplyScalar(1);
+                moveDirection.copy(cameraRight).multiplyScalar(playerSpeed);
                 requiredKeyPressed = true;
             }
             if (key === "KeyD") {
                 // Движение вправо относительно камеры на 1 единицу
-                moveDirection.copy(cameraRight).multiplyScalar(-1);
+                moveDirection.copy(cameraRight).multiplyScalar(-playerSpeed);
                 requiredKeyPressed = true;
             }
             if (key === "KeyW") {
                 // Движение вперед относительно камеры на 1 единицу
-                moveDirection.copy(cameraDirection).multiplyScalar(1);
+                moveDirection.copy(cameraDirection).multiplyScalar(playerSpeed);
                 requiredKeyPressed = true;
             }
             if (key === "KeyS") {
                 // Движение назад относительно камеры на 1 единицу
-                moveDirection.copy(cameraDirection).multiplyScalar(-1);
+                moveDirection.copy(cameraDirection).multiplyScalar(-playerSpeed);
                 requiredKeyPressed = true;
             }
 
@@ -275,7 +292,8 @@ socket.on('connect', () => {
                 
                 const movedata = {
                     id: mySocketID,
-                    position: player.position
+                    position: player.position,
+                    renderDistance: renderDistance
                 }
                 
                 socket.emit('playerMove', movedata);
@@ -298,8 +316,8 @@ socket.on('connect', () => {
     }
 
     function initialiseGame() {
-        initialisePlayer(1);
-        initialisePlayerControls(playerSpeed, camera);
+        initialisePlayer(1, 4);
+        initialisePlayerControls(camera);
     }
 
     initialiseGame();
