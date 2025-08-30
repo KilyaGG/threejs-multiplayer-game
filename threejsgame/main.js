@@ -8,7 +8,7 @@ import { io } from 'socket.io-client';
 const socket = io('http://localhost:3000');
 let mySocketID;
 let loadedChunks = [];
-
+window.tookPlaces = [];
 socket.on('connect', () => { 
     mySocketID = socket.id; 
     console.log(`My socket id: ${mySocketID}`);
@@ -70,6 +70,7 @@ socket.on('connect', () => {
         window.playerSpeed = speed;
         scene.add(player);
         player.position.y += 1;
+
         const playerInstance = {
             id: mySocketID,
             position: player.position
@@ -134,18 +135,19 @@ socket.on('connect', () => {
 
 
     function printWorld(worldData) {
-        window.tookPlaces = [];
         let chunksToWork = [];
         if (loadedChunks.length != 0) {
             worldData.forEach(object => {
-                let chunkNotLoadedYet = true;
-                loadedChunks.forEach(chunk => {
-                    if (chunk.middle.x === object.middle.x && chunk.middle.z === object.middle.z) {
-                        chunkNotLoadedYet = false;
+                if (object) {
+                    let chunkNotLoadedYet = true;
+                    loadedChunks.forEach(chunk => {
+                        if (chunk.middle.x === object.middle.x && chunk.middle.z === object.middle.z) {
+                            chunkNotLoadedYet = false;
+                        }
+                    });
+                    if (chunkNotLoadedYet) {
+                        chunksToWork.push(object);
                     }
-                });
-                if (chunkNotLoadedYet) {
-                    chunksToWork.push(object);
                 }
             });
         } else {

@@ -4,7 +4,7 @@ import { Server } from 'socket.io';
 let players = [];
 
 const worldSize = 10;
-
+const worldSeed = 214331;
 const chunkLength = 10;
 
 class Chunk {
@@ -31,8 +31,7 @@ class Chunk {
     }
 }
 
-//let world = GenerateWorld(50, 50, 1, 100, 9);
-let world = GenerateWorldChunks(worldSize, 3, 10, chunkLength);
+let world = GenerateWorldChunks(worldSize, 3, 10, chunkLength, worldSeed);
 
 
 
@@ -54,13 +53,13 @@ io.on('connection', (socket) => {
 
     socket.on('playerConnect', (data) => {
         players.push(data);
-        socket.emit('worldData-new-user', GetChunksToSend(data.position));
+        socket.emit('worldData-new-user', GetChunksToSendImproved(data.position));
         console.log(`Игроков на сервере: ${players.length}`);
         socket.broadcast.emit('playerConnect', data);
     })
 
     socket.on('playerMove', (data) => {
-      socket.emit('worldData-new-user', GetChunksToSend(data.position));
+      socket.emit('worldData-new-user', GetChunksToSendImproved(data.position));
       console.log('Игрок изменил координаты:', data);
 
       players.forEach(player => {
@@ -84,52 +83,43 @@ io.on('connection', (socket) => {
     });
 });
 
+function GetChunksToSendImproved(position) {
 
-function GetChunksToSend(position) {
     let chunksToSend = [];
-    for (let i = 0; i < world.length; i++) {
-        for (let j = 0; j < world.length; j++) {
 
-            const bounds = world[i][j].GetChunkBounds(chunkLength);
+    let x = position.x;
+    let z = position.z;
 
-            if (position.x >= bounds.left && position.x <= bounds.right) {
-                if (position.z >= bounds.top && position.z <= bounds.bottom) {
-                    chunksToSend.push(world[i][j]);
-                    chunksToSend.push(world[i+1][j]);
-                    chunksToSend.push(world[i-1][j]);
-                    chunksToSend.push(world[i][j+1]);
-                    chunksToSend.push(world[i][j-1]);
-                    chunksToSend.push(world[i+1][j+1]);
-                    chunksToSend.push(world[i-1][j-1]);
-                    chunksToSend.push(world[i+1][j-1]);
-                    chunksToSend.push(world[i-1][j+1]);
-                }
-                 
-            }
-            
-        }
-    }
+    const worldCenter = worldSize*worldSize/2;
+
+    let j = Math.floor((x + worldCenter)/chunkLength);
+    let i = Math.floor((z + worldCenter)/chunkLength);
+    try {
+        chunksToSend.push(world[i][j]);
+        chunksToSend.push(world[i+1][j]);
+        chunksToSend.push(world[i-1][j]);
+        chunksToSend.push(world[i][j+1]);
+        chunksToSend.push(world[i][j-1]);
+        chunksToSend.push(world[i+1][j+1]);
+        chunksToSend.push(world[i-1][j-1]);
+        chunksToSend.push(world[i+1][j-1]);
+        chunksToSend.push(world[i-1][j+1]);
+    } catch {}
     return chunksToSend;
 }
 
-
-function getRandomColor() {
-    var letters = '0123456789ABCDEF';
-    var color = '#';
-    for (var i = 0; i < 6; i++) {
-        color += letters[Math.floor(Math.random() * 16)];
-    }
-    return color;
-}
-
-function getRandomInt(min, max) {
-  min = Math.ceil(min);
-  max = Math.floor(max);
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function GenerateWorldChunks(worldSize, maxStructuresOnChunk, maxStructuresHeight, chunkLength) {
+function GenerateWorldChunks(worldSize, maxStructuresOnChunk, maxStructuresHeight, chunkLength, seed = 12345) {
     let world = [];
+
+    // Детерминированный генератор псевдослучайных чисел
+    function seededRandom() {
+        seed = (seed * 9301 + 49297) % 233280;
+        return seed / 233280;
+    }
+
+    // Локальные функции для работы с детерминированными значениями
+    const getRandomInt = (min, max) => Math.floor(seededRandom() * (max - min + 1)) + min;
+    const getRandomColor = () => `rgb(${getRandomInt(0, 255)}, ${getRandomInt(0, 255)}, ${getRandomInt(0, 255)})`;
 
     class Structure {
         constructor(height, size, x, z, color) {
@@ -139,18 +129,19 @@ function GenerateWorldChunks(worldSize, maxStructuresOnChunk, maxStructuresHeigh
             this.z = z;
             this.color = color;
         }
-    };
+    }
 
-    const worldCenter = worldSize*worldSize/2;
+    const worldCenter = worldSize * worldSize / 2;
 
     for (let i = 0; i < worldSize; i++) {
         world[i] = [];
         for (let j = 0; j < worldSize; j++) {
             let chunk = new Chunk();
             chunk.length = chunkLength;
-            let x  = j*chunkLength - worldCenter;;
-            let z = i*chunkLength - worldCenter;
-            chunk.middle = {x: x, z: z};
+            let x = j * chunkLength - worldCenter;
+            let z = i * chunkLength - worldCenter;
+            chunk.middle = { x: x, z: z };
+            
             for (let a = 0; a < maxStructuresOnChunk; a++) {
                 const chunkBounds = chunk.GetChunkBounds(chunkLength);
                 const x = getRandomInt(chunkBounds.left, chunkBounds.right);
@@ -158,7 +149,7 @@ function GenerateWorldChunks(worldSize, maxStructuresOnChunk, maxStructuresHeigh
                 const structure = new Structure();
                 structure.color = getRandomColor();
                 structure.size = 1;
-                structure.height = Math.floor(Math.random() * maxStructuresHeight) + 1;
+                structure.height = getRandomInt(1, maxStructuresHeight);
                 structure.x = x;
                 structure.z = z;
                 chunk.chunkBlockdata.push(structure);
@@ -166,49 +157,8 @@ function GenerateWorldChunks(worldSize, maxStructuresOnChunk, maxStructuresHeigh
             world[i][j] = chunk;
         }
     }
+
+    console.log(`Создал мир ${worldSize}x${worldSize} с сидом ${seed}`);
+
     return world;
-}
-
-
-function GenerateWorld(earthlimitX, earthlimitZ, maxCubeSize, structureNumber, maxStructureHeight) {
-    let worldObjects = [];
-
-    class Structure {
-        constructor(height, size, x, z, color) {
-            this.height = height;
-            this.size = size;
-            this.x = x;
-            this.z = z;
-            this.color = color;
-        }
-    };
-    for (let i = 0; i < structureNumber; i++) {
-        let foundAFreePlace = false
-        while (foundAFreePlace === false) {
-            const coords = {
-                x: Math.floor(Math.random() * (2*earthlimitX+1)) - earthlimitX,
-                z: Math.floor(Math.random() * (2*earthlimitZ+1)) - earthlimitZ
-            };
-            let placeAlreadyTook = false;
-            worldObjects.forEach(object => {
-                if (object.x === coords.x && object.z === coords.z) {
-                    placeAlreadyTook = true;
-                }
-            });
-            if (!placeAlreadyTook) {
-                const structure = new Structure();
-                structure.color = getRandomColor();
-                structure.size = Math.floor(Math.random()*maxCubeSize) + 1;
-                structure.height = Math.floor(Math.random() * maxStructureHeight) + 1;
-                structure.x = coords.x;
-                structure.z = coords.z;
-                worldObjects.push(structure);
-                foundAFreePlace = true;
-            }
-        }
-
-    }
-
-    console.log(`World generated successfully with number of objects ${worldObjects.length}`);
-    return worldObjects;
 }
