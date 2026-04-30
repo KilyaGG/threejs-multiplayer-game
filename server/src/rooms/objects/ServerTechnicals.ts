@@ -44,10 +44,10 @@ export class Quaternion extends Schema {
 export const PHYSICS = {
     PLAYER_RADIUS: 0.4,
     PLAYER_HEIGHT: 1.8,
-    PLAYER_MASS: 40,
-    JUMP_FORCE: 100,
-    GRAVITY: -25,
-    MAX_SPEED: 64,
+    PLAYER_MASS: 60,
+    JUMP_FORCE: 9,
+    GRAVITY: -15,
+    MAX_SPEED: 23,
     GROUND_Y: -0.5,
 };
 

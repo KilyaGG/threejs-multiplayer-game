@@ -12,12 +12,12 @@ export class MyRoom extends Room {
     lastUpdateTime: number = Date.now();
 
     onCreate() {
-        this.autoDispose = false;
+        // Убираем autoDispose или ставим true, но не удаляем при 0 игроков
+        this.autoDispose = false; // НЕ УДАЛЯЕМ КОМНАТУ АВТОМАТИЧЕСКИ
         
         this.physicsWorld = new PhysicsWorld();
         
-        // Устанавливаем частоту обновления состояния
-        this.setPatchRate(30); // 30 обновлений в секунду
+        this.setPatchRate(30);
         
         this.onMessage("updatePosition", (client, data) => {
             const direction = {
@@ -75,9 +75,10 @@ export class MyRoom extends Room {
         this.state.players.delete(client.sessionId);
         this.physicsWorld.removePlayer(client.sessionId);
         
-        if (this.state.players.size === 0) {
-            this.stopGameLoop();
-        }
+        // НЕ ОСТАНАВЛИВАЕМ ИГРОВОЙ ЦИКЛ при 0 игроков
+        // if (this.state.players.size === 0) {
+        //     this.stopGameLoop();
+        // }
     }
 
     onDispose() {
@@ -87,7 +88,6 @@ export class MyRoom extends Room {
     private startGameLoop() {
         if (this.gameLoopTimer) return;
         
-        // Запускаем обновление физики 30 раз в секунду
         this.gameLoopTimer = setInterval(() => {
             this.update();
         }, NETWORK.SERVER_UPDATE_RATE);
@@ -105,10 +105,8 @@ export class MyRoom extends Room {
         const deltaTime = (now - this.lastUpdateTime) / 1000;
         this.lastUpdateTime = now;
         
-        // Обновляем физику
         this.physicsWorld.update(deltaTime);
         
-        // Синхронизируем позиции
         this.state.players.forEach((player, sessionId) => {
             const physicsPos = this.physicsWorld.getPlayerPosition(sessionId);
             if (physicsPos) {

@@ -54,7 +54,7 @@ async function handleJoin(username: string, loginUI: HTMLElement) {
                 if (myPlayer && myPlayer.position) {
                     playerController.setServerPosition(
                         myPlayer.position.x,
-                        myPlayer.position.y,
+                        myPlayer.position.y + 0.5,
                         myPlayer.position.z
                     );
                 }

@@ -12,12 +12,15 @@ export class PhysicsWorld {
         this.world.broadphase = new CANNON.NaiveBroadphase();
         (this.world.solver as any).iterations = 10;
         
+        const groundMaterial = new CANNON.Material('ground');
+        const playerMaterial = new CANNON.Material('player');
+        
         this.groundBody = new CANNON.Body({
             mass: 0,
             shape: new CANNON.Plane(),
-            material: new CANNON.Material('ground'),
-            collisionFilterGroup: 1, // Группа для пола
-            collisionFilterMask: 2 
+            material: groundMaterial,
+            collisionFilterGroup: 1,
+            collisionFilterMask: 2
         });
         
         this.groundBody.quaternion.setFromAxisAngle(
@@ -29,10 +32,9 @@ export class PhysicsWorld {
         
         (this.world as any).addBody(this.groundBody);
         
-        const defaultMaterial = new CANNON.Material('default');
         const groundContact = new CANNON.ContactMaterial(
-            this.groundBody.material!,
-            defaultMaterial,
+            groundMaterial,
+            playerMaterial,
             {
                 friction: 0.0,
                 restitution: 0.0
@@ -42,25 +44,28 @@ export class PhysicsWorld {
     }
     
     addPlayer(playerId: string, position: { x: number, y: number, z: number }) {
-        const shape = new CANNON.Cylinder(
-            PHYSICS.PLAYER_RADIUS,
-            PHYSICS.PLAYER_RADIUS,
-            PHYSICS.PLAYER_HEIGHT,
-            8
-        );
+        // Используем сферу вместо цилиндра для более надежного контакта с землей
+        const radius = 0.4;
+        const height = 1.8;
+        
+        // Создаем составное тело: сфера (низ) + сфера (верх)
+        const shape = new CANNON.Sphere(radius);
         
         const body = new CANNON.Body({
             mass: PHYSICS.PLAYER_MASS,
             shape: shape,
-            linearDamping: 0.0, // Убрали damping чтобы не замедляло
+            material: new CANNON.Material('player'),
+            linearDamping: 0.0,
             angularDamping: 0.99,
             fixedRotation: true,
             allowSleep: false,
-            collisionFilterGroup: 2, // Группа для игроков
-            collisionFilterMask: 1 
+            collisionFilterGroup: 2,
+            collisionFilterMask: 1
         });
         
-        body.position.set(position.x, position.y, position.z);
+        // Спавним над землей: земля на -0.5, радиус сферы 0.4
+        // Центр сферы должен быть на: groundY + radius = -0.5 + 0.4 = -0.1
+        body.position.set(position.x, 3, position.z); // Упадет на землю
         
         body.angularVelocity.set(0, 0, 0);
         body.inertia.set(0, 0, 0);
@@ -69,7 +74,7 @@ export class PhysicsWorld {
         (this.world as any).addBody(body);
         this.playerBodies.set(playerId, body);
         
-        console.log(`Added physics body for player ${playerId} at`, position);
+        console.log(`Added player ${playerId} at y=3, will fall to ground`);
         
         return body;
     }
@@ -79,45 +84,38 @@ export class PhysicsWorld {
         if (body) {
             (this.world as any).removeBody(body);
             this.playerBodies.delete(playerId);
-            console.log(`Removed physics body for player ${playerId}`);
+            console.log(`Removed player ${playerId}`);
         }
     }
     
     movePlayer(playerId: string, direction: { x: number, y: number, z: number }, deltaTime: number) {
         const body = this.playerBodies.get(playerId);
-        if (!body) {
-            console.log(`No physics body for player ${playerId}`);
-            return;
-        }
+        if (!body) return;
         
-        // Применяем скорость напрямую
         const speed = PHYSICS.MAX_SPEED;
         body.velocity.x = direction.x * speed;
         body.velocity.z = direction.z * speed;
-        
-        console.log(`Moving player ${playerId}: dir=${direction.x},${direction.z} vel=${body.velocity.x},${body.velocity.z}`);
     }
     
     jumpPlayer(playerId: string): boolean {
         const body = this.playerBodies.get(playerId);
         if (!body) return false;
         
-        if (this.isOnGround(body)) {
+        // Для сферы радиусом 0.4 на земле -0.5, центр сферы на -0.1
+        const sphereCenter = body.position.y;
+        const expectedGroundY = PHYSICS.GROUND_Y + 0.4; // -0.5 + 0.4 = -0.1
+        const isNearGround = Math.abs(sphereCenter - expectedGroundY) < 0.15;
+        const isStopped = Math.abs(body.velocity.y) < 0.3;
+        
+        console.log(`Player ${playerId}: y=${sphereCenter.toFixed(3)}, expected=${expectedGroundY}, nearGround=${isNearGround}, stopped=${isStopped}`);
+        
+        if (isNearGround && isStopped) {
             body.velocity.y = PHYSICS.JUMP_FORCE;
-            console.log(`Player ${playerId} jumped!`);
+            console.log(`Player ${playerId} JUMPED!`);
             return true;
         }
         
         return false;
-    }
-    
-    isOnGround(body: CANNON.Body): boolean {
-        const playerBottom = body.position.y - PHYSICS.PLAYER_HEIGHT / 2;
-        const groundTop = PHYSICS.GROUND_Y;
-        const tolerance = 0.3;
-        
-        return Math.abs(playerBottom - groundTop) < tolerance && 
-               Math.abs(body.velocity.y) < 0.5;
     }
     
     update(deltaTime: number) {
