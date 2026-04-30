@@ -1,7 +1,6 @@
 import { connect } from './connect';
 import { initScene } from './game';
 import { PlayerController } from './PlayerController';
-import { Callbacks } from "@colyseus/sdk";
 import { GameManager } from './objects/GameManager';
 import * as THREE from 'three';
 
@@ -27,70 +26,68 @@ async function handleJoin(username: string, loginUI: HTMLElement) {
     
     const { scene, camera, renderer } = initScene();
     const gameManager = new GameManager(scene);
-    const playerController = new PlayerController(camera);
     
     const room = await connect({ name: username });
+    const playerController = new PlayerController(camera, room);
+    
+    camera.position.set(0, 1.7, 0);
+    
     let lastUpdateTime = performance.now();
-    let updateInterval = 0.1;
-    let timeSinceLastUpdate = 0;
+    let lastServerUpdate = 0;
+    const serverUpdateInterval = 33; // ~30 обновлений в секунду
     
     // Игровой цикл
     function gameLoop() {
         requestAnimationFrame(gameLoop);
         
         const currentTime = performance.now();
-        const deltaTime = (currentTime - lastUpdateTime) / 1000;
+        const deltaTime = Math.min((currentTime - lastUpdateTime) / 1000, 0.1);
         lastUpdateTime = currentTime;
         
+        // Отправляем ввод на сервер
         playerController.update(deltaTime);
         
-        // Отправка позиции на сервер
-        timeSinceLastUpdate += deltaTime;
-        if (timeSinceLastUpdate >= updateInterval) {
-            const position = playerController.getPosition();
-            
-            room.send('updatePosition', {
-                x: position.x,
-                y: position.y,
-                z: position.z
-            });
-            timeSinceLastUpdate = 0;
+        // Получаем позицию от сервера и устанавливаем как цель для интерполяции
+        if (currentTime - lastServerUpdate > serverUpdateInterval) {
+            if (room.state && room.state.players) {
+                const myPlayer = room.state.players.get(room.sessionId);
+                if (myPlayer && myPlayer.position) {
+                    playerController.setServerPosition(
+                        myPlayer.position.x,
+                        myPlayer.position.y,
+                        myPlayer.position.z
+                    );
+                }
+            }
+            lastServerUpdate = currentTime;
         }
+        
+        // Интерполируем позицию каждый кадр
+        playerController.interpolate(deltaTime);
         
         renderer.render(scene, camera);
     }
     
-    // Настройка обработчиков
     setupRoomHandlers(room, gameManager, playerController);
     
-    // Запуск игрового цикла
     gameLoop();
 }
 
 function setupRoomHandlers(room: any, gameManager: GameManager, playerController: PlayerController) {
-    // Используем patch rate для отслеживания изменений
     room.onStateChange((state: any) => {
-        // Этот колбек вызывается при каждом изменении состояния
-        
         state.players.forEach((player: any, sessionId: string) => {
-            // Пропускаем своего игрока - для него не нужен визуальный объект
             if (sessionId === room.sessionId) {
-                // Обновляем позицию своей камеры, если нужно
-                // (обычно не нужно, так как мы управляем камерой локально)
                 return;
             }
             
             if (!gameManager.players.has(sessionId)) {
-                // Новый игрок (только другие игроки)
                 console.log(`New player: ${sessionId}`, player.authData?.name);
                 gameManager.addPlayer(sessionId, player);
             } else {
-                // Обновляем позицию существующего игрока
                 gameManager.updatePlayerFromServer(sessionId, player.position);
             }
         });
         
-        // Проверяем удаленных игроков
         gameManager.players.forEach((player, sessionId) => {
             if (!state.players.has(sessionId)) {
                 console.log(`Player left: ${sessionId}`);
@@ -99,7 +96,6 @@ function setupRoomHandlers(room: any, gameManager: GameManager, playerController
         });
     });
     
-    // Обработка сообщений
     room.onMessage("broadcast", (message: any) => {
         console.log(`Chat message: ${message.content} from ${message.sender}`);
     });
@@ -110,14 +106,6 @@ function setupRoomHandlers(room: any, gameManager: GameManager, playerController
     
     room.onMessage("playerLeft", (data: any) => {
         console.log(`${data.name} left the game`);
-    });
-    
-    room.onMessage("playerShoot", (data: any) => {
-        console.log(`Player ${data.shooterId} shot with ${data.weaponType}`);
-    });
-    
-    room.onMessage("playerDamaged", (data: any) => {
-        console.log(`Player ${data.targetId} took ${data.damage} damage`);
     });
     
     room.onError((code: number, message: string) => {

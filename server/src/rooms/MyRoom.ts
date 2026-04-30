@@ -1,21 +1,39 @@
 import { Room, Client } from "@colyseus/core";
 import { MyState, Player } from "./MyState.js";
-import { Techs, Vector3, Quaternion } from "./objects/ServerTechnicals.js";
+import { Techs, Vector3, Quaternion, PHYSICS, NETWORK } from "./objects/ServerTechnicals.js";
+import { PhysicsWorld } from "./objects/PhysicsWorld.js";
 
 export class MyRoom extends Room {
     maxClients = 4;
     state = new MyState();
     
-    // Частота обновлений для игрового цикла
-    updateInterval: number = 50; // 20 раз в секунду
     gameLoopTimer: NodeJS.Timeout | null = null;
+    physicsWorld: PhysicsWorld;
+    lastUpdateTime: number = Date.now();
 
     onCreate() {
-        this.autoDispose = false; // Не удаляем комнату автоматически
+        this.autoDispose = false;
         
-        // Обработка чата/сообщений
+        this.physicsWorld = new PhysicsWorld();
+        
+        // Устанавливаем частоту обновления состояния
+        this.setPatchRate(30); // 30 обновлений в секунду
+        
+        this.onMessage("updatePosition", (client, data) => {
+            const direction = {
+                x: data.direction?.x || 0,
+                y: 0,
+                z: data.direction?.z || 0
+            };
+            
+            this.physicsWorld.movePlayer(client.sessionId, direction, 1/30);
+        });
+        
+        this.onMessage("jump", (client) => {
+            this.physicsWorld.jumpPlayer(client.sessionId);
+        });
+        
         this.onMessage("broadcast", (client, payload) => {
-            console.log(`Игрок ${client.sessionId} прислал: ${payload}`);
             this.broadcast("broadcast", {
                 sender: this.state.players.get(client.sessionId)?.authData.name,
                 content: payload,
@@ -23,50 +41,21 @@ export class MyRoom extends Room {
             });
         });
         
-        // Обработка обновлений позиции и поворота
-        this.onMessage("updatePosition", (client, data) => {
-            const player = this.state.players.get(client.sessionId);
-            if (player) {
-                player.setPosition(data.x, data.y - 1, data.z);
-                if (data.rotation) {
-                    player.setRotation(data.rotation.x, data.rotation.y, data.rotation.z, data.rotation.w);
-                }
-            }
-        });
-        
-        // Обработка выстрелов
-        this.onMessage("shoot", (client, data) => {
-            const player = this.state.players.get(client.sessionId);
-            if (player) {
-                this.handleShooting(client, data);
-            }
-        });
-        
-        // Обработка получения урона
-        this.onMessage("takeDamage", (client, data) => {
-            const player = this.state.players.get(client.sessionId);
-            if (player) {
-                this.handleDamage(client.sessionId, data.damage, data.attackerId);
-            }
-        });
-        
-        // Запуск игрового цикла
         this.startGameLoop();
     }
 
     onJoin(client: Client, data: any = {}) {
-        console.log(`Игрок ${client.sessionId} подключился:`, data);
+        console.log(`Player ${client.sessionId} joined`);
         
         const player = new Player();
         player.changeName(data.name || "Player");
         
-        // Умное размещение игроков
         const spawnPos = Techs.getSpawnPosition(this.state.players.size);
         player.setPosition(spawnPos.x, spawnPos.y, spawnPos.z);
         
         this.state.players.set(client.sessionId, player);
+        this.physicsWorld.addPlayer(client.sessionId, spawnPos);
         
-        // Отправляем сообщение о подключении
         this.broadcast("playerJoined", {
             id: client.sessionId,
             name: player.authData.name,
@@ -84,8 +73,8 @@ export class MyRoom extends Room {
         }
         
         this.state.players.delete(client.sessionId);
+        this.physicsWorld.removePlayer(client.sessionId);
         
-        // Если комната пуста, останавливаем игровой цикл
         if (this.state.players.size === 0) {
             this.stopGameLoop();
         }
@@ -93,15 +82,15 @@ export class MyRoom extends Room {
 
     onDispose() {
         this.stopGameLoop();
-        console.log("Комната уничтожена");
     }
     
     private startGameLoop() {
         if (this.gameLoopTimer) return;
         
+        // Запускаем обновление физики 30 раз в секунду
         this.gameLoopTimer = setInterval(() => {
             this.update();
-        }, this.updateInterval);
+        }, NETWORK.SERVER_UPDATE_RATE);
     }
     
     private stopGameLoop() {
@@ -112,83 +101,19 @@ export class MyRoom extends Room {
     }
     
     private update() {
-        this.state.gameTime += this.updateInterval / 1000;
+        const now = Date.now();
+        const deltaTime = (now - this.lastUpdateTime) / 1000;
+        this.lastUpdateTime = now;
         
-        // Проверка на минимальное количество игроков для игры
-        if (this.state.players.size < 2) {
-            // Ждем больше игроков
-            return;
-        }
+        // Обновляем физику
+        this.physicsWorld.update(deltaTime);
         
-        // Здесь можно добавить игровую логику:
-        // - Движение NPC
-        // - Спавн предметов
-        // - Проверка условий победы
-        // - Обновление пуль и т.д.
-    }
-    
-    private handleShooting(client: Client, data: any) {
-        // Валидация и обработка выстрела
-        const shooter = this.state.players.get(client.sessionId);
-        if (!shooter) return;
-        
-        // Создаем сообщение о выстреле
-        const shootMessage = {
-            shooterId: client.sessionId,
-            position: data.position,
-            direction: data.direction,
-            weaponType: data.weaponType || "pistol"
-        };
-        
-        // Отправляем всем клиентам, кроме стрелявшего
-        this.clients.forEach((otherClient) => {
-            if (otherClient.sessionId !== client.sessionId) {
-                otherClient.send("playerShoot", shootMessage);
+        // Синхронизируем позиции
+        this.state.players.forEach((player, sessionId) => {
+            const physicsPos = this.physicsWorld.getPlayerPosition(sessionId);
+            if (physicsPos) {
+                player.setPosition(physicsPos.x, physicsPos.y, physicsPos.z);
             }
         });
-        
-        // Отправляем подтверждение стрелявшему
-        shooter.addScore(1); // Очки за выстрел
-    }
-    
-    private handleDamage(targetId: string, damage: number, attackerId: string) {
-        const target = this.state.players.get(targetId);
-        const attacker = this.state.players.get(attackerId);
-        
-        if (!target || !target.authData.isAlive) return;
-        
-        target.authData.takeDamage(damage);
-        
-        // Отправляем информацию о уроне всем клиентам
-        const damageMessage = {
-            targetId: targetId,
-            attackerId: attackerId,
-            damage: damage,
-            currentHealth: target.authData.health,
-            isAlive: target.authData.isAlive
-        };
-        
-        this.broadcast("playerDamaged", damageMessage);
-        
-        // Обработка смерти
-        if (!target.authData.isAlive) {
-            if (attacker) {
-                attacker.addScore(10); // Очки за убийство
-            }
-            
-            // Возрождение через 3 секунды
-            setTimeout(() => {
-                if (target && this.state.players.has(targetId)) {
-                    target.authData.heal(100);
-                    const spawnPos = Techs.getSpawnPosition(Math.floor(Math.random() * 4));
-                    target.setPosition(spawnPos.x, spawnPos.y, spawnPos.z);
-                    
-                    this.broadcast("playerRespawned", {
-                        playerId: targetId,
-                        position: target.position
-                    });
-                }
-            }, 3000);
-        }
     }
 }

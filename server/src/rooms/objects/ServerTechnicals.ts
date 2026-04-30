@@ -41,18 +41,32 @@ export class Quaternion extends Schema {
     }
 }
 
+export const PHYSICS = {
+    PLAYER_RADIUS: 0.4,
+    PLAYER_HEIGHT: 1.8,
+    PLAYER_MASS: 40,
+    JUMP_FORCE: 100,
+    GRAVITY: -25,
+    MAX_SPEED: 64,
+    GROUND_Y: -0.5,
+};
+
+export const NETWORK = {
+    SERVER_UPDATE_RATE: 1000 / 30, // 30 обновлений в секунду с сервера
+    CLIENT_SEND_RATE: 1000 / 30,   // 30 отправок в секунду на сервер
+};
+
 export class Techs {
     static getRandomColor() {
         return Math.random() * 0xffffff | 0;
     }
     
     static getSpawnPosition(playerCount: number): { x: number, y: number, z: number } {
-        // Размещаем игроков по кругу
         const radius = 3;
-        const angle = (playerCount * Math.PI * 2) / 4; // Максимум 4 игрока
+        const angle = (playerCount * Math.PI * 2) / 4;
         return {
             x: Math.cos(angle) * radius,
-            y: 0.5,
+            y: 1,
             z: Math.sin(angle) * radius
         };
     }

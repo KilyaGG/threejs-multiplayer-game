@@ -2,30 +2,38 @@ import * as THREE from 'three';
 
 export class PlayerController {
     camera: THREE.PerspectiveCamera;
-    velocity: THREE.Vector3;
     direction: THREE.Vector3;
-    moveSpeed: number;
     lookSpeed: number;
     euler: THREE.Euler;
     isLocked: boolean;
+    room: any;
     
-    // Состояние клавиш
     keys: { [key: string]: boolean } = {};
+    canJump: boolean = true;
+    jumpCooldown: number = 0.5;
+    lastJumpTime: number = 0;
     
-    constructor(camera: THREE.PerspectiveCamera) {
+    // Интерполяция
+    previousPosition: THREE.Vector3;
+    targetPosition: THREE.Vector3;
+    interpolationFactor: number = 0;
+    readonly INTERPOLATION_SPEED = 10; // Скорость интерполяции
+    
+    constructor(camera: THREE.PerspectiveCamera, room: any) {
         this.camera = camera;
-        this.velocity = new THREE.Vector3();
+        this.room = room;
         this.direction = new THREE.Vector3();
-        this.moveSpeed = 5.0;
         this.lookSpeed = 0.002;
         this.euler = new THREE.Euler(0, 0, 0, 'YXZ');
         this.isLocked = false;
+        
+        this.previousPosition = new THREE.Vector3();
+        this.targetPosition = new THREE.Vector3();
         
         this.setupEventListeners();
     }
     
     setupEventListeners() {
-        // Управление мышью
         document.addEventListener('mousemove', (event) => {
             if (!this.isLocked) return;
             
@@ -40,14 +48,17 @@ export class PlayerController {
             this.camera.quaternion.setFromEuler(this.euler);
         });
         
-        // Блокировка курсора
         document.addEventListener('pointerlockchange', () => {
             this.isLocked = document.pointerLockElement === document.querySelector('canvas');
         });
         
-        // Управление клавиатурой
         document.addEventListener('keydown', (event) => {
             this.keys[event.code] = true;
+            
+            if (event.code === 'Space') {
+                event.preventDefault();
+                this.jump();
+            }
         });
         
         document.addEventListener('keyup', (event) => {
@@ -55,24 +66,33 @@ export class PlayerController {
         });
     }
     
+    jump() {
+        const now = performance.now() / 1000;
+        
+        if (this.canJump && (now - this.lastJumpTime) > this.jumpCooldown) {
+            if (this.room) {
+                this.room.send('jump', {});
+                this.lastJumpTime = now;
+            }
+        }
+    }
+    
     update(deltaTime: number) {
         if (!this.isLocked) return;
         
-        // Сброс направления
+        // Вычисляем направление движения
         this.direction.set(0, 0, 0);
         
-        // WASD управление
         if (this.keys['KeyW']) this.direction.z += 1;
         if (this.keys['KeyS']) this.direction.z -= 1;
         if (this.keys['KeyA']) this.direction.x -= 1;
         if (this.keys['KeyD']) this.direction.x += 1;
         
-        // Нормализация направления
         if (this.direction.length() > 0) {
             this.direction.normalize();
         }
         
-        // Применение направления относительно взгляда камеры
+        // Преобразуем направление относительно камеры
         const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
         forward.y = 0;
         forward.normalize();
@@ -81,13 +101,63 @@ export class PlayerController {
         right.y = 0;
         right.normalize();
         
-        // Расчет скорости
-        this.velocity.set(0, 0, 0);
-        this.velocity.add(forward.clone().multiplyScalar(this.direction.z * this.moveSpeed * deltaTime));
-        this.velocity.add(right.clone().multiplyScalar(this.direction.x * this.moveSpeed * deltaTime));
+        const moveDirection = new THREE.Vector3();
+        moveDirection.add(forward.clone().multiplyScalar(this.direction.z));
+        moveDirection.add(right.clone().multiplyScalar(this.direction.x));
         
-        // Перемещение камеры
-        this.camera.position.add(this.velocity);
+        if (moveDirection.length() > 0) {
+            moveDirection.normalize();
+        }
+        
+        // Отправляем направление на сервер
+        if (this.room) {
+            this.room.send('updatePosition', {
+                direction: {
+                    x: moveDirection.x,
+                    y: 0,
+                    z: moveDirection.z
+                }
+            });
+        }
+    }
+    
+    // Установка новой целевой позиции от сервера
+    setServerPosition(x: number, y: number, z: number) {
+        // Сохраняем текущую позицию как предыдущую
+        this.previousPosition.copy(this.camera.position);
+        
+        // Устанавливаем новую целевую позицию
+        this.targetPosition.set(x, y + 0.9, z); // +0.9 для высоты глаз
+        
+        // Сбрасываем фактор интерполяции
+        this.interpolationFactor = 0;
+    }
+    
+    // Интерполяция между предыдущей и целевой позицией
+    interpolate(deltaTime: number) {
+        if (this.interpolationFactor < 1.0) {
+            // Увеличиваем фактор интерполяции
+            this.interpolationFactor += deltaTime * this.INTERPOLATION_SPEED;
+            
+            if (this.interpolationFactor > 1.0) {
+                this.interpolationFactor = 1.0;
+            }
+            
+            // Применяем сглаживание (ease-out)
+            const t = this.smoothStep(this.interpolationFactor);
+            
+            // Интерполируем позицию
+            this.camera.position.lerpVectors(
+                this.previousPosition,
+                this.targetPosition,
+                t
+            );
+        }
+    }
+    
+    // Функция сглаживания для более плавного движения
+    smoothStep(t: number): number {
+        return t * t * (3 - 2 * t);
     }
     
     getPosition(): THREE.Vector3 {
