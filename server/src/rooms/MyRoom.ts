@@ -2,6 +2,7 @@ import { Room, Client } from "@colyseus/core";
 import { MyState, Player } from "./MyState.js";
 import { Techs, Vector3, Quaternion, PHYSICS, NETWORK } from "./objects/ServerTechnicals.js";
 import { PhysicsWorld } from "./objects/PhysicsWorld.js";
+import { getMap } from "../maps/index.js";
 
 export class MyRoom extends Room {
     maxClients = 4;
@@ -11,11 +12,20 @@ export class MyRoom extends Room {
     physicsWorld: PhysicsWorld;
     lastUpdateTime: number = Date.now();
 
-    onCreate() {
-        // Убираем autoDispose или ставим true, но не удаляем при 0 игроков
-        this.autoDispose = false; // НЕ УДАЛЯЕМ КОМНАТУ АВТОМАТИЧЕСКИ
+    onCreate(options: any) {
+        this.autoDispose = false;
         
         this.physicsWorld = new PhysicsWorld();
+
+        const mapName = options.map || 'test_arena';
+        const mapData = getMap(mapName);
+        
+        if (mapData) {
+            this.physicsWorld.loadMap(mapData);
+            console.log(`Loaded map: ${mapData.name}`);
+        } else {
+            console.error(`Map not found: ${mapName}`);
+        }
         
         this.setPatchRate(30);
         
@@ -50,17 +60,21 @@ export class MyRoom extends Room {
         const player = new Player();
         player.changeName(data.name || "Player");
         
-        const spawnPos = Techs.getSpawnPosition(this.state.players.size);
-        player.setPosition(spawnPos.x, spawnPos.y, spawnPos.z);
+        // Получаем точку спавна из менеджера карт
+        const spawnPos = this.physicsWorld.getSpawnPoint(this.state.players.size);
         
-        this.state.players.set(client.sessionId, player);
-        this.physicsWorld.addPlayer(client.sessionId, spawnPos);
-        
-        this.broadcast("playerJoined", {
-            id: client.sessionId,
-            name: player.authData.name,
-            color: player.color
-        });
+        if (spawnPos) {
+            player.setPosition(spawnPos.x, spawnPos.y, spawnPos.z);
+            
+            this.state.players.set(client.sessionId, player);
+            this.physicsWorld.addPlayer(client.sessionId, spawnPos);
+            
+            this.broadcast("playerJoined", {
+                id: client.sessionId,
+                name: player.authData.name,
+                color: player.color
+            });
+        }
     }
 
     onLeave(client: Client, options?: any) {
@@ -74,11 +88,6 @@ export class MyRoom extends Room {
         
         this.state.players.delete(client.sessionId);
         this.physicsWorld.removePlayer(client.sessionId);
-        
-        // НЕ ОСТАНАВЛИВАЕМ ИГРОВОЙ ЦИКЛ при 0 игроков
-        // if (this.state.players.size === 0) {
-        //     this.stopGameLoop();
-        // }
     }
 
     onDispose() {
@@ -105,8 +114,10 @@ export class MyRoom extends Room {
         const deltaTime = (now - this.lastUpdateTime) / 1000;
         this.lastUpdateTime = now;
         
+        // Обновляем физику
         this.physicsWorld.update(deltaTime);
         
+        // Синхронизируем позиции из физики в состояние
         this.state.players.forEach((player, sessionId) => {
             const physicsPos = this.physicsWorld.getPlayerPosition(sessionId);
             if (physicsPos) {

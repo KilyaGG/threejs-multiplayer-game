@@ -46,8 +46,8 @@ export const PHYSICS = {
     PLAYER_HEIGHT: 1.8,
     PLAYER_MASS: 60,
     JUMP_FORCE: 9,
-    GRAVITY: -15,
-    MAX_SPEED: 23,
+    GRAVITY: -25,
+    MAX_SPEED: 12,
     GROUND_Y: -0.5,
 };
 
@@ -66,10 +66,42 @@ export class Techs {
         const angle = (playerCount * Math.PI * 2) / 4;
         return {
             x: Math.cos(angle) * radius,
-            y: 1,
+            y: 0,
             z: Math.sin(angle) * radius
         };
     }
+}
+
+export interface CollisionBox {
+    position: { x: number; y: number; z: number };
+    size: { width: number; height: number; depth: number };
+    rotation?: { x: number; y: number; z: number }; // В градусах
+}
+
+export interface SpawnPoint {
+    position: { x: number; y: number; z: number };
+    rotation?: { x: number; y: number; z: number };
+    team?: string; // Для командных режимов
+}
+
+export interface MapData {
+    name: string;
+    version: string;
+    collisionBoxes: CollisionBox[];
+    spawnPoints: SpawnPoint[];
+    
+    // Дополнительная информация
+    boundaries?: {
+        min: { x: number; y: number; z: number };
+        max: { x: number; y: number; z: number };
+    };
+    
+    // Особые зоны (опционально)
+    deathZones?: CollisionBox[];
+    capturePoints?: {
+        position: { x: number; y: number; z: number };
+        radius: number;
+    }[];
 }
 
 export class AuthData extends Schema {

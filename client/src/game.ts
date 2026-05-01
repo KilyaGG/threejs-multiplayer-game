@@ -35,8 +35,67 @@ export function initScene() {
     const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.5;
+    ground.position.y = 0;
     scene.add(ground);
+
+    // --- ТЕСТОВАЯ КАРТА (на основе test_map.ts) ---
+    const mapMaterial = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.8 });
+
+    // Стены
+    const wallGeometry = new THREE.BoxGeometry(20, 4, 1);
+    const wall1 = new THREE.Mesh(wallGeometry, mapMaterial);
+    wall1.position.set(0, 2, -10);
+    scene.add(wall1);
+
+    const wall2 = new THREE.Mesh(wallGeometry, mapMaterial);
+    wall2.position.set(0, 2, 10);
+    scene.add(wall2);
+
+    const wallGeometrySide = new THREE.BoxGeometry(1, 4, 20);
+    const wall3 = new THREE.Mesh(wallGeometrySide, mapMaterial);
+    wall3.position.set(-10, 2, 0);
+    scene.add(wall3);
+
+    const wall4 = new THREE.Mesh(wallGeometrySide, mapMaterial);
+    wall4.position.set(10, 2, 0);
+    scene.add(wall4);
+
+    // Препятствия
+    const obstacleMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.7 });
+
+    const obstacle1 = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 2), obstacleMaterial);
+    obstacle1.position.set(-3, 0.5, -3);
+    scene.add(obstacle1);
+
+    const obstacle2 = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 2), obstacleMaterial);
+    obstacle2.position.set(3, 0.5, 3);
+    scene.add(obstacle2);
+
+    const obstacle3 = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 3), obstacleMaterial);
+    obstacle3.position.set(0, 1, 0);
+    scene.add(obstacle3);
+
+    // Маркеры спавна
+    const spawnMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const spawnGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+
+    const spawn1 = new THREE.Mesh(spawnGeometry, spawnMaterial);
+    spawn1.position.set(-5, 0.5, -5);
+    scene.add(spawn1);
+
+    const spawn2 = new THREE.Mesh(spawnGeometry, spawnMaterial);
+    spawn2.position.set(5, 0.5, -5);
+    scene.add(spawn2);
+
+    const spawn3 = new THREE.Mesh(spawnGeometry, spawnMaterial);
+    spawn3.position.set(-5, 0.5, 5);
+    scene.add(spawn3);
+
+    const spawn4 = new THREE.Mesh(spawnGeometry, spawnMaterial);
+    spawn4.position.set(5, 0.5, 5);
+    scene.add(spawn4);
+
+    console.log('Test map loaded');
 
     document.body.appendChild(renderer.domElement);
     
