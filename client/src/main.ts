@@ -2,16 +2,20 @@ import { connect } from './connect';
 import { initScene } from './game';
 import { PlayerController } from './PlayerController';
 import { GameManager } from './objects/GameManager';
+import { MapLoader } from './objects/MapLoader';    
+import { getMapConfig } from './maps/index';
 import * as THREE from 'three';
 
 async function start() {
     const loginUI = document.getElementById('login-ui') as HTMLElement;
     const joinBtn = document.getElementById('join-btn') as HTMLButtonElement;
     const nameInput = document.getElementById('username') as HTMLInputElement;
+    const mapSelect = document.getElementById('map-select') as HTMLSelectElement;
 
     const performLogin = () => {
         const username = nameInput.value.trim() || "Newbie";
-        handleJoin(username, loginUI);
+        const mapName = mapSelect?.value || 'map1';
+        handleJoin(username, loginUI, mapName);
     };
 
     joinBtn.onclick = performLogin;
@@ -21,22 +25,35 @@ async function start() {
     };
 }
 
-async function handleJoin(username: string, loginUI: HTMLElement) {
+async function handleJoin(username: string, loginUI: HTMLElement, mapName: string = 'map1') {
     loginUI.style.display = 'none';
     
     const { scene, camera, renderer } = initScene();
     const gameManager = new GameManager(scene);
+    const mapLoader = new MapLoader(scene);
     
-    const room = await connect({ name: username });
+    // Загружаем карту
+    const mapConfig = getMapConfig(mapName);
+    if (mapConfig) {
+        try {
+            await mapLoader.loadMap(mapConfig);
+            console.log(`Map ${mapName} loaded`);
+            
+            // Скрываем маркеры спавна в релизе
+            // mapLoader.toggleSpawnMarkers(false);
+            
+        } catch (error) {
+            console.error(`Failed to load map ${mapName}:`, error);
+        }
+    }
+    
+    const room = await connect({ name: username, map: mapName });
     const playerController = new PlayerController(camera, room);
-    
-    camera.position.set(0, 1.7, 0);
     
     let lastUpdateTime = performance.now();
     let lastServerUpdate = 0;
-    const serverUpdateInterval = 33; // ~30 обновлений в секунду
+    const serverUpdateInterval = 33;
     
-    // Игровой цикл
     function gameLoop() {
         requestAnimationFrame(gameLoop);
         
@@ -44,17 +61,15 @@ async function handleJoin(username: string, loginUI: HTMLElement) {
         const deltaTime = Math.min((currentTime - lastUpdateTime) / 1000, 0.1);
         lastUpdateTime = currentTime;
         
-        // Отправляем ввод на сервер
         playerController.update(deltaTime);
         
-        // Получаем позицию от сервера и устанавливаем как цель для интерполяции
         if (currentTime - lastServerUpdate > serverUpdateInterval) {
             if (room.state && room.state.players) {
                 const myPlayer = room.state.players.get(room.sessionId);
                 if (myPlayer && myPlayer.position) {
                     playerController.setServerPosition(
                         myPlayer.position.x,
-                        myPlayer.position.y + 0.5,
+                        myPlayer.position.y,
                         myPlayer.position.z
                     );
                 }
@@ -62,23 +77,18 @@ async function handleJoin(username: string, loginUI: HTMLElement) {
             lastServerUpdate = currentTime;
         }
         
-        // Интерполируем позицию каждый кадр
         playerController.interpolate(deltaTime);
-        
         renderer.render(scene, camera);
     }
     
     setupRoomHandlers(room, gameManager, playerController);
-    
     gameLoop();
 }
 
 function setupRoomHandlers(room: any, gameManager: GameManager, playerController: PlayerController) {
     room.onStateChange((state: any) => {
         state.players.forEach((player: any, sessionId: string) => {
-            if (sessionId === room.sessionId) {
-                return;
-            }
+            if (sessionId === room.sessionId) return;
             
             if (!gameManager.players.has(sessionId)) {
                 console.log(`New player: ${sessionId}`, player.authData?.name);

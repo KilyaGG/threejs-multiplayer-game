@@ -158,7 +158,7 @@ export class PhysicsWorld {
         } else {
             // В воздухе — плавно добавляем скорость (Air Control), 
             // не трогая текущую инерцию и Y-скорость!
-            const airSpeed = PHYSICS.MAX_SPEED * 0.5;
+            const airSpeed = PHYSICS.MAX_SPEED;
             const targetX = direction.x * airSpeed;
             const targetZ = direction.z * airSpeed;
 

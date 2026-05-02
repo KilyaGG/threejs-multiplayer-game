@@ -17,7 +17,7 @@ export class MyRoom extends Room {
         
         this.physicsWorld = new PhysicsWorld();
 
-        const mapName = options.map || 'test_arena';
+        const mapName = options.map || 'map1';
         const mapData = getMap(mapName);
         
         if (mapData) {
